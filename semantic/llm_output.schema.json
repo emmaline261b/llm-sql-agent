@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sql", "params", "result_shape", "chart", "answer_brief", "followups", "assumptions"],
+  "properties": {
+    "sql": { "type": "string", "minLength": 10 },
+    "params": { "type": "object" },
+    "result_shape": {
+      "type": "string",
+      "enum": ["timeseries", "ranking", "table", "distribution"]
+    },
+    "chart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "x", "y", "series", "title"],
+      "properties": {
+        "type": { "type": "string", "enum": ["line", "bar", "stacked_bar", "area", "table"] },
+        "x": { "type": ["string", "null"] },
+        "y": { "type": ["string", "null"] },
+        "series": { "type": ["string", "null"] },
+        "title": { "type": "string" }
+      }
+    },
+    "answer_brief": { "type": "string" },
+    "followups": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 0,
+      "maxItems": 6
+    },
+    "assumptions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 0,
+      "maxItems": 10
+    }
+  }
+}
