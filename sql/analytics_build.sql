@@ -73,7 +73,14 @@ WITH sec_src AS (
     NULLIF(h.issuer_title,'') AS security_name,
     NULLIF(h.asset_cat,'') AS asset_category,
     NULLIF(h.currency_code,'') AS currency,
-    NULLIF(h.issuer_name,'') AS issuer_name
+    NULLIF(h.issuer_name,'') AS issuer_name,
+
+    -- issuer country: use investment_country; treat N/A and XX as NULL
+    CASE
+      WHEN NULLIF(h.investment_country,'') IN ('N/A','XX') THEN NULL
+      ELSE NULLIF(h.investment_country,'')
+    END AS issuer_country_code
+
   FROM raw_nport.fund_reported_holding h
   LEFT JOIN raw_nport.identifiers i
     ON i.holding_id = h.holding_id
@@ -84,6 +91,7 @@ sec_keyed AS (
     COALESCE(isin, cusip, ticker, other_identifier, holding_id) AS security_key,
     cusip, isin, ticker, other_identifier,
     security_name, asset_category, currency, issuer_name,
+    issuer_country_code,
     -- ranking to choose best representative row for a given security_key
     (CASE WHEN isin IS NOT NULL THEN 4 ELSE 0 END) +
     (CASE WHEN cusip IS NOT NULL THEN 3 ELSE 0 END) +
@@ -93,7 +101,15 @@ sec_keyed AS (
   WHERE COALESCE(isin, cusip, ticker, other_identifier, holding_id) IS NOT NULL
 )
 INSERT INTO analytics.dim_security (
-  security_key, cusip, isin, ticker, security_name, asset_category, currency, issuer_name
+  security_key,
+  cusip,
+  isin,
+  ticker,
+  security_name,
+  asset_category,
+  currency,
+  issuer_name,
+  issuer_country_code
 )
 SELECT DISTINCT ON (security_key)
   security_key,
@@ -103,7 +119,8 @@ SELECT DISTINCT ON (security_key)
   security_name,
   asset_category,
   currency,
-  issuer_name
+  issuer_name,
+  issuer_country_code
 FROM sec_keyed
 ORDER BY security_key, key_quality DESC
 ON CONFLICT (security_key) DO NOTHING;
@@ -152,7 +169,6 @@ WITH fact_src AS (
           NULLIF(h.holding_id,'')
         ) IS NOT NULL
 )
-
 INSERT INTO analytics.fact_holding (
   fund_key, report_date, security_key, weight_pct, market_value, shares
 )
@@ -165,7 +181,6 @@ SELECT
   SUM(shares)
 FROM fact_src
 GROUP BY fund_key, report_date, security_key;
-
 
 -- -----------------------
 -- 4) fact_fund_return (deferred)

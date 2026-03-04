@@ -1,13 +1,15 @@
 from fastapi import FastAPI, HTTPException
 from sqlalchemy import text
 
+from api.routes_execute import router as execute_router
 from db.engine import engine
 from db.schema import get_analytics_schema_rows
-from raw.diagnostics import raw_nport_tables, raw_nport_topcounts, raw_nport_columns
 from llm.models import ChatRequest
 from llm.planner import generate_plan
+from raw.diagnostics import raw_nport_tables, raw_nport_topcounts, raw_nport_columns
 
 app = FastAPI(title="llm-sql-agent POC")
+app.include_router(execute_router)
 
 
 @app.get("/health")

@@ -32,3 +32,6 @@ pgdata/
 
 # Alembic artifacts
 *.sqlite3
+
+# instructions
+readmes/
