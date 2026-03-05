@@ -67,7 +67,7 @@ class SortDirection(str, Enum):
 class TimeWindow(BaseModel):
     mode: TimeWindowMode
     n: Optional[int] = None
-    start_date: Optional[str] = None  # YYYY-MM-DD or placeholders (see sql_builder/time_window.py)
+    start_date: Optional[str] = None  # YYYY-MM-DD or placeholders (see sql_builder/sql_builder_time_window.py)
     end_date: Optional[str] = None    # YYYY-MM-DD or placeholders
 
     @model_validator(mode="after")

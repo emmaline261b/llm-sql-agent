@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..schemas import Resolution
+from ..intent_schemas import Resolution
 
 
 MAX_RETRIES = 2

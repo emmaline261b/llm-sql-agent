@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, List
 
-from ..schemas import (
+from ..intent_schemas import (
     Intent,
     Entity,
     Metric,
@@ -16,7 +16,7 @@ from ..schemas import (
     Identifiers,
 )
 
-from .patterns import (
+from .intent_patterns import (
     normalize,
     contains_any,
     extract_top_n,
@@ -34,9 +34,10 @@ from .patterns import (
     YTD_KW,
     LAST_QUARTER_KW,
     THIS_QUARTER_KW,
+    BEST_KW,  # <-- add in patterns.py
 )
 
-from .assumptions import (
+from .intent_assumptions import (
     make_assumption,
     DEFAULT_TOP_N,
     DEFAULT_RANKING_BY_MARKET_VALUE,
@@ -128,9 +129,13 @@ def try_resolve(question: str) -> Optional[RulesOutcome]:
 
     # ---------------------------------------
     # analysis type
+    #
+    # Rule: "best" implies selecting extremes; implement as rank:
+    # - "best fund" => top 1
+    # - "best N funds" => top N
     # ---------------------------------------
 
-    if contains_any(text, RANK_KW):
+    if contains_any(text, RANK_KW) or contains_any(text, BEST_KW):
         analysis_type = AnalysisType.rank
         assumptions.append(make_assumption(INFER_ANALYSIS_RANK, "Analysis type inferred as ranking"))
 
@@ -217,8 +222,12 @@ def try_resolve(question: str) -> Optional[RulesOutcome]:
         top_n = extract_top_n(text)
 
         if top_n is None:
-            top_n = 10
-            assumptions.append(make_assumption(DEFAULT_TOP_N, "Ranking defaulted to top 10"))
+            if contains_any(text, BEST_KW):
+                top_n = 1
+                assumptions.append(make_assumption(DEFAULT_TOP_N, "Ranking defaulted to top 1 for 'best'"))
+            else:
+                top_n = 10
+                assumptions.append(make_assumption(DEFAULT_TOP_N, "Ranking defaulted to top 10"))
 
         ranking = Ranking(top_n=top_n)
 

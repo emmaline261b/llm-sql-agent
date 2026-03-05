@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 from sqlalchemy import text
-from db.engine import engine
+from db.db_engine import engine
 
 
 def raw_nport_tables():

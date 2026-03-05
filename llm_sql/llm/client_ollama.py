@@ -2,8 +2,8 @@ import json
 from typing import Any, Dict
 import httpx
 
+OLLAMA_URL = "http://127.0.0.1:11434"
 
-OLLAMA_URL = "http://localhost:11434"
 
 def _extract_first_json_object(s: str) -> str:
     """
@@ -53,9 +53,29 @@ def _extract_first_json_object(s: str) -> str:
     raise ValueError("No balanced JSON object found.")
 
 
+def _parse_json_from_content(content: str) -> Dict[str, Any]:
+    content = (content or "").strip()
+
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        extracted = _extract_first_json_object(content)
+        try:
+            return json.loads(extracted)
+        except Exception as e:
+            raise RuntimeError(
+                "LLM did not return valid JSON.\n"
+                f"Raw output:\n{content}"
+            ) from e
+
 
 def call_ollama_json(model: str, system: str, user: str) -> Dict[str, Any]:
-    payload = {
+    """
+    Calls Ollama and forces JSON output.
+    Tries /api/chat first. If 404, falls back to /api/generate.
+    """
+
+    chat_payload = {
         "model": model,
         "messages": [
             {"role": "system", "content": system},
@@ -66,20 +86,28 @@ def call_ollama_json(model: str, system: str, user: str) -> Dict[str, Any]:
     }
 
     with httpx.Client(timeout=180.0) as client:
-        r = client.post(f"{OLLAMA_URL}/api/chat", json=payload)
+        r = client.post(f"{OLLAMA_URL}/api/chat", json=chat_payload)
+
+        if r.status_code == 404:
+            # fallback: /api/generate (prompt-based)
+            gen_payload = {
+                "model": model,
+                "prompt": f"{system}\n\n{user}",
+                "stream": False,
+                "options": {"temperature": 0.1},
+            }
+            r = client.post(f"{OLLAMA_URL}/api/generate", json=gen_payload)
+
         r.raise_for_status()
         data = r.json()
 
-    content = data["message"]["content"].strip()
+    # Response shape differs between chat and generate
+    if isinstance(data, dict) and "message" in data and isinstance(data["message"], dict):
+        content = (data["message"].get("content") or "").strip()
+        return _parse_json_from_content(content)
 
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        try:
-            extracted = _extract_first_json_object(content)
-            return json.loads(extracted)
-        except Exception as e:
-            raise RuntimeError(
-                "LLM did not return valid JSON.\n"
-                f"Raw output:\n{content}"
-            ) from e
+    if isinstance(data, dict) and "response" in data:
+        content = (data.get("response") or "").strip()
+        return _parse_json_from_content(content)
+
+    raise RuntimeError(f"Unexpected Ollama response shape: keys={list(data.keys()) if isinstance(data, dict) else type(data)}")

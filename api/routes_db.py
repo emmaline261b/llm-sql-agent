@@ -1,18 +1,18 @@
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
 
-from db.engine import engine
+from db.db_engine import engine
 from db.raw.diagnostics import raw_nport_tables, raw_nport_topcounts, raw_nport_columns
-from db.schema import get_analytics_schema_rows
+from db.db_schema import get_analytics_schema_rows
 from pydantic import BaseModel
 from typing import Any
 import logging
 
-from db.execution import execute_sql
+from db.db_execution import execute_sql
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="", tags=["db"])
+router = APIRouter(prefix="", tags=["3. db"])
 
 class RunSQLRequest(BaseModel):
     sql: str

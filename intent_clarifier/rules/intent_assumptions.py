@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from ..schemas import Assumption
+from ..intent_schemas import Assumption
 
 
 DEFAULT_TOP_N = "DEFAULT_TOP_N"

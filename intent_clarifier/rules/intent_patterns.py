@@ -71,6 +71,15 @@ RANK_KW = {
     "ranking",
 }
 
+BEST_KW = {
+    "best",
+    "best performing",
+    "top performing",
+    "highest",
+    "highest performing",
+    "winner",
+}
+
 TREND_KW = {
     "trend",
     "over time",

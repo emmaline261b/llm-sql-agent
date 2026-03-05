@@ -3,16 +3,16 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-from db.engine import engine
-from db.execution import execute_sql
+from db.db_engine import engine
+from db.db_execution import execute_sql
 
 from intent_2.resolver import resolve
 from intent_2.schemas import Resolution as IntentResolution
 
 from sql_builder import build_sql
-from sql_builder.sql_validator import validate_sql, SQLValidationError
+from sql_builder.sql_builder_validator import validate_sql, SQLValidationError
 
-from .types import QueryServiceResult
+from .query_types import QueryServiceResult
 
 
 logger = logging.getLogger(__name__)

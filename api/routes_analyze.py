@@ -2,14 +2,14 @@ import logging
 
 from fastapi import APIRouter
 
-from data_analyzer.schema import AnalyzeRequest, AnalyzeResponse
-from data_analyzer.analyzer import analyze
-from data_analyzer.prompts import SYSTEM_PL, build_user_prompt
+from data_analyzer.data_schema import AnalyzeRequest, AnalyzeResponse
+from data_analyzer.data_analyzer import analyze
+from data_analyzer.data_prompts import SYSTEM_PL, build_user_prompt
 from llm_sql.llm.client_ollama import call_ollama_json
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(prefix="", tags=["4. analyze"])
 
 
 @router.post("/analyze-results", response_model=AnalyzeResponse)
@@ -28,7 +28,7 @@ def analyze_results(req: AnalyzeRequest):
     )
 
     narrative = call_ollama_json(
-        model="llama3",
+        model="qwen2.5:7b-instruct",
         system=SYSTEM_PL,
         user=build_user_prompt(
             question=req.question,

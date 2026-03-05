@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 from typing import List
 
-from ..schemas import (
+from ..intent_schemas import (
     Alternative,
     Assumption,
     Intent,
@@ -14,7 +14,7 @@ from ..schemas import (
     TimeWindowMode,
     Ranking,
 )
-from ..rules.assumptions import (
+from ..rules.intent_assumptions import (
     DEFAULT_TOP_N,
     DEFAULT_TIME_WINDOW_MOST_RECENT,
     DEFAULT_METRIC_MARKET_VALUE,

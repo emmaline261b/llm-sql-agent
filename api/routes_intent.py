@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Literal, Optional
 
-from intent_clarifier.resolver import resolve
+from intent_clarifier.intent_resolver import resolve
 from llm_sql.llm.models import ChatRequest
 import logging
 logger = logging.getLogger(__name__)

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .schemas import Resolution
-from .rules.engine import try_resolve
+from .intent_schemas import Resolution
+from .rules.intent_engine import try_resolve
 from .alternatives.engine import generate_alternatives
-from .llm.clarifier import clarify_with_llm
-from .llm.guard import validate_or_retry
+from .llm.llm_intent_clarifier import clarify_with_llm
+from .llm.llm_intent_guard import validate_or_retry
 
 import logging
 

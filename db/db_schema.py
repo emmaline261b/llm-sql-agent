@@ -1,7 +1,7 @@
-# db/schema.py
+# db/db_schema.py
 from functools import lru_cache
 from sqlalchemy import text
-from db.engine import engine
+from db.db_engine import engine
 
 def get_analytics_schema_rows() -> list[dict]:
     q = """

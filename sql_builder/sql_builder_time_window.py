@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Dict, Any, Optional
 
-from intent_clarifier.schemas import TimeAxis, TimeWindow, TimeWindowMode
+from intent_clarifier.intent_schemas import TimeAxis, TimeWindow, TimeWindowMode
 
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ def build_time_filter(
     Converts intent.time_window to SQL for a given fact alias.
 
     Conventions:
-    - build.py defines a CTE named "{fact_alias}_src" containing the fact rows.
+    - sql_builder_service.py defines a CTE named "{fact_alias}_src" containing the fact rows.
     - This function uses SQLAlchemy bind params (":param") everywhere.
 
     Supports:

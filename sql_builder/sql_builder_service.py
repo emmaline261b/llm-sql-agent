@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Dict, Any
 import logging
 
-from intent_clarifier.schemas import Intent, AnalysisType, Metric, Entity, Scope, TimeAxis
-from .sql_validator import validate_sql
-from .types import SQLPlan
-from .postgres import q_table
-from .time_window import build_time_filter
+from intent_clarifier.intent_schemas import Intent, AnalysisType, Metric, Entity, Scope, TimeAxis
+from .sql_builder_validator import validate_sql
+from .sql_builder_types import SQLPlan
+from .sql_builder_postgres import q_table
+from .sql_builder_time_window import build_time_filter
 
 logger = logging.getLogger(__name__)
 

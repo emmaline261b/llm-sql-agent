@@ -2,12 +2,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Any, Literal, Optional
 
-from intent_clarifier.schemas import Intent
+from intent_clarifier.intent_schemas import Intent
 from sql_builder import build_sql
 import logging
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["sql-builder"])
+router = APIRouter(tags=["2. sql-builder"])
 
 IntentAction = Literal["clarify", "execute"]
 

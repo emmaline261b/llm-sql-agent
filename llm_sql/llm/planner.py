@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from db.schema import get_analytics_schema_text
+from db.db_schema import get_analytics_schema_text
 from llm_sql.llm.client_ollama import call_ollama_json
 from llm_sql.llm.guard import basic_sql_guard
 from llm_sql.llm.validation import validate_plan

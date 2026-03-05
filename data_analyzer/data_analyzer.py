@@ -273,6 +273,8 @@ def analyze(result, spec) -> Dict[str, Any]:
         "ties": ties,
         "notable_patterns": patterns,
         "data_quality": meta,
+        "best": rows[0],
+        "worst": rows[-1],
     }
 
     logger.info(
