@@ -1,350 +1,140 @@
-LLM Agent Architecture
+LLM SQL Agent
 
-The system uses a multi-stage agent pipeline. Each stage has a clearly
-separated responsibility.
+This project implements a deterministic natural language → SQL pipeline
+for querying an analytics database containing fund holdings and returns.
 
-This separation is critical because:
+The system converts a user question into a structured Intent, builds
+deterministic SQL, executes it safely against Postgres, and returns
+structured results.
 
--   SQL generation must happen before data exists
--   Answer explanations must happen after SQL execution
--   Chart selection is a presentation concern, not a query concern
+Key rule: LLMs never generate SQL.
 
-Therefore the agent operates in five sequential stages.
+  --------------------------------------------------
+                 SYSTEM ARCHITECTURE
+  --------------------------------------------------
+                  EXECUTION PIPELINE
 
-------------------------------------------------------------------------
+    User Question │ ▼ POST /intent Intent Resolver
+    (rule engine + optional LLM clarification) │ ▼
+     Intent │ ▼ POST /build-sql Deterministic SQL
+      Builder │ ▼ SQLPlan {sql, params} │ ▼ POST
+       /run-sql Query Runner │ ▼ Query Results
+  --------------------------------------------------
 
-Agent Execution Pipeline
+1.  INTENT RESOLUTION (Intent 2.0)
 
-    User Question
-          │
-          ▼
-    1. Conversation / Clarification
-          │
-          ▼
-    2. SQL Planning (LLM)
-          │
-          ▼
-    3. SQL Execution (DB)
-          │
-          ▼
-    4. Presentation Planning (charts)
-          │
-          ▼
-    5. Result Explanation (LLM)
-          │
-          ▼
-    Response to user
+Location: intent_clarifier/
 
-------------------------------------------------------------------------
+Purpose: Convert natural language question into structured Intent
+object.
 
-1. Conversation / Clarification
+Example question: top 10 funds
 
-Purpose:
+Resolved intent example:
 
-Resolve ambiguity in the user question before SQL generation.
+{ “entity”: “fund”, “metric”: “market_value”, “analysis_type”: “rank”,
+“scope”: “universe”, “time_axis”: “report_date”, “time_window”: {
+“mode”: “between_dates”, “start_date”: “LAST_COMPLETED_QUARTER_START”,
+“end_date”: “LAST_COMPLETED_QUARTER_END” }, “ranking”: { “top_n”: 10 } }
 
-Typical ambiguities:
+Strategy: Rules first → LLM fallback
 
--   time period
--   aggregation level
--   top N
--   metric definitions
--   filters
+Rules detect: - entity - metric - ranking - identifiers - scope - time
+window
 
-Example:
+  --------------------------------------------------
+  2. TIME WINDOW POLICY
+  --------------------------------------------------
+  3. SQL BUILDER
 
-User question:
+  Location: sql_builder/
 
-    Show fund exposure by asset category
+  Purpose: Convert Intent → SQLPlan
+  deterministically.
 
-Possible interpretations:
+  Entry point: build_sql(intent)
 
--   latest report date
--   last year
--   last 4 quarters
--   specific fund vs all funds
+  Output:
 
-The system may ask clarification questions.
+  SQLPlan ├─ sql └─ params
 
-------------------------------------------------------------------------
+  Example:
 
-Implementation Options
+  { “sql”: “SELECT … LIMIT :limit”, “params”:
+  {“limit”: 10} }
 
-Two possible approaches exist.
+  Example generated SQL:
 
-Option A (recommended): LLM Clarification Agent
+  WITH fh_src AS ( SELECT * FROM
+  analytics.fact_holding fh )
 
-Use a lightweight LLM prompt to detect ambiguity and generate
-clarification questions.
+  SELECT fh.fund_key, df.fund_name,
+  SUM(fh.market_value) AS value FROM fh_src fh JOIN
+  analytics.dim_fund df ON df.fund_key = fh.fund_key
+  WHERE fh.report_date BETWEEN quarter_start AND
+  quarter_end GROUP BY fh.fund_key, df.fund_name
+  ORDER BY value DESC LIMIT :limit
+  --------------------------------------------------
 
-Advantages:
+SQL VALIDATION
 
--   flexible
--   handles natural language well
--   easier to extend
+Before execution SQL is validated.
 
-Option B: Rule-based intent detection
+Checks: - SELECT only - single statement - required LIMIT - allowed
+schemas (analytics) - trailing semicolon allowed
 
-Detect patterns using predefined rules:
+Validator: sql_builder/sql_validator.py
 
--   keywords for time
--   keywords for aggregation
--   keywords for metrics
+  --------------------------------------------------
+  4. QUERY RUNNER
+  --------------------------------------------------
+  DATABASE SCHEMA
 
-Advantages:
+  analytics.fact_holding analytics.fact_fund_return
+  analytics.dim_fund analytics.dim_security
 
--   deterministic
--   faster
+  fact_holding: fund_key security_key report_date
+  market_value weight_pct shares
 
-Disadvantages:
+  fact_fund_return: fund_key month_end total_return
 
--   brittle
--   limited coverage
+  dim_fund: fund_key fund_name registrant_cik
+  series_id class_id
 
-------------------------------------------------------------------------
+  dim_security: security_key ticker cusip isin
+  --------------------------------------------------
 
-Recommended Strategy
+LOGGING
 
-Hybrid approach:
+Logging exists across the entire pipeline:
 
-    Rules first
-    LLM fallback
+intent_clarifier.resolver sql_builder.build sql_builder.time_window
+sql_builder.sql_validator api.routes_db
 
-1.  Try rule-based interpretation
-2.  If ambiguity detected → ask LLM for clarification
+Example logs:
 
-------------------------------------------------------------------------
+intent.resolve.start sql_builder.start sql_builder.sql db.run_sql.start
+db.run_sql.done rows=…
 
-Clarification Prompt (LLM)
+Traceability: question → intent → sql → execution
 
-Example system prompt:
+  --------------------------------------------------
+  CURRENT CAPABILITIES
+  --------------------------------------------------
+  PLANNED FEATURES
 
-    You are an assistant helping clarify analytical questions.
+  - security ranking - trend queries - peer groups -
+  fund comparison - delta analysis - result
+  explanations - chart selection - query caching
+  --------------------------------------------------
 
-    Your task is NOT to generate SQL.
+DESIGN PRINCIPLES
 
-    Your task is to detect ambiguity in the user's question.
+Deterministic SQL LLM never generates SQL.
 
-    If the question is ambiguous, ask a short clarification question.
+Structured Intent Layer Intent is the semantic bridge between language
+and SQL.
 
-    If the question is sufficiently clear, respond with:
+Safety SQL validator prevents dangerous queries.
 
-    {
-      "status": "clear"
-    }
-
-    If clarification is required:
-
-    {
-      "status": "clarify",
-      "question": "..."
-    }
-
-Example output:
-
-    {
-      "status": "clarify",
-      "question": "Do you want the exposure for the most recent reporting date or over a time period?"
-    }
-
-------------------------------------------------------------------------
-
-2. SQL Planning (LLM)
-
-This stage converts the clarified intent into SQL.
-
-The LLM receives:
-
--   user question
--   schema context
--   SQL rules
--   domain rules
-
-The output is a structured SQL plan.
-
-Important:
-
-This stage must not produce explanations or summaries.
-
-Only query planning.
-
-------------------------------------------------------------------------
-
-SQL Planner Prompt
-
-System prompt example:
-
-    You are a SQL planner for Postgres.
-
-    Your task is to generate a SQL query that answers the user's question.
-
-    Rules:
-
-    - Only SELECT or WITH queries are allowed.
-    - Only tables from schema analytics.* may be used.
-    - Use explicit joins.
-    - Use CTEs instead of window functions.
-    - Always include LIMIT <= 500 unless results are guaranteed small.
-
-    Return ONLY JSON:
-
-    {
-      "sql": "...",
-      "params": {},
-      "result_shape": "...",
-      "assumptions": []
-    }
-
-The SQL is then validated before execution.
-
-------------------------------------------------------------------------
-
-3. SQL Execution
-
-The generated SQL is executed against PostgreSQL.
-
-Execution safeguards:
-
--   statement timeout
--   SQL validation
--   SELECT-only enforcement
--   schema restrictions
-
-Output format:
-
-    {
-      "columns": [...],
-      "row_count": N,
-      "rows": [...]
-    }
-
-------------------------------------------------------------------------
-
-4. Presentation Planning (Chart Selection)
-
-Chart type is not determined by the user query.
-
-Instead a default chart is selected based on result structure.
-
-Example mapping:
-
-  Result Shape   Chart
-  -------------- ------------
-  timeseries     line chart
-  ranking        bar chart
-  table          table
-  distribution   histogram
-
-Example logic:
-
-    if result_shape == "timeseries":
-        chart = line
-    elif result_shape == "ranking":
-        chart = bar
-    else:
-        chart = table
-
-Users may change charts in the frontend.
-
-------------------------------------------------------------------------
-
-5. Result Explanation (LLM)
-
-This stage generates:
-
--   answer summary
--   suggested follow-up questions
-
-Unlike SQL planning, this step has access to the data.
-
-Inputs:
-
--   user question
--   SQL query
--   result metadata
--   sample rows
-
-------------------------------------------------------------------------
-
-Explanation Prompt
-
-Example system prompt:
-
-    You are a financial data analyst.
-
-    You are given:
-
-    - a user question
-    - a SQL query
-    - the resulting data
-
-    Write a short answer summarizing the result.
-
-    Guidelines:
-
-    - Use plain language
-    - Do not invent information not present in the data
-    - Mention key trends or largest values
-
-Example output:
-
-    {
-      "answer_brief": "...",
-      "followups": [
-        "...",
-        "..."
-      ]
-    }
-
-------------------------------------------------------------------------
-
-Final Response Format
-
-The API response combines all stages.
-
-Example:
-
-    {
-      "plan": {
-        "sql": "...",
-        "params": {},
-        "assumptions": []
-      },
-      "data": {
-        "columns": [...],
-        "rows": [...]
-      },
-      "chart": {
-        "type": "line",
-        "x": "...",
-        "y": "...",
-        "series": "..."
-      },
-      "answer_brief": "...",
-      "followups": [...]
-    }
-
-------------------------------------------------------------------------
-
-Why This Architecture
-
-This design avoids several common LLM errors:
-
-  Problem                            Solution
-  ---------------------------------- --------------------------------------------
-  LLM invents explanations           explanations generated after SQL execution
-  LLM guesses chart types            chart chosen deterministically
-  LLM generates invalid SQL          SQL validation layer
-  LLM mixes planning and narration   responsibilities separated
-
-------------------------------------------------------------------------
-
-Future Improvements
-
-Planned enhancements:
-
--   query caching
--   vector retrieval for schema context
--   query memory
--   user preference learning
--   interactive BI-style filtering
+Reproducibility All stages are logged and deterministic.

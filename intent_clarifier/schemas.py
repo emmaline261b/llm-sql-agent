@@ -67,8 +67,8 @@ class SortDirection(str, Enum):
 class TimeWindow(BaseModel):
     mode: TimeWindowMode
     n: Optional[int] = None
-    start_date: Optional[str] = None  # YYYY-MM-DD
-    end_date: Optional[str] = None    # YYYY-MM-DD
+    start_date: Optional[str] = None  # YYYY-MM-DD or placeholders (see sql_builder/time_window.py)
+    end_date: Optional[str] = None    # YYYY-MM-DD or placeholders
 
     @model_validator(mode="after")
     def _validate(self) -> "TimeWindow":
@@ -77,15 +77,18 @@ class TimeWindow(BaseModel):
                 raise ValueError("time_window.n must be > 0 when mode=last_n")
             self.start_date = None
             self.end_date = None
+
         elif self.mode == TimeWindowMode.between_dates:
             if not self.start_date or not self.end_date:
                 raise ValueError("start_date and end_date are required when mode=between_dates")
             self.n = None
+
         else:
             # most_recent
             self.n = None
             self.start_date = None
             self.end_date = None
+
         return self
 
 
@@ -158,6 +161,9 @@ class Intent(BaseModel):
     # derived choice: holdings use report_date; returns use month_end
     time_axis: TimeAxis
 
+    # Note: rules can override with between_dates placeholders like:
+    # - CURRENT_YEAR_START / CURRENT_DATE
+    # - LAST_COMPLETED_QUARTER_START / LAST_COMPLETED_QUARTER_END
     time_window: TimeWindow = Field(default_factory=lambda: TimeWindow(mode=TimeWindowMode.most_recent))
 
     identifiers: Identifiers = Field(default_factory=Identifiers)
@@ -178,23 +184,25 @@ class Intent(BaseModel):
             raise ValueError("total_return requires time_axis=month_end")
 
         # 2) Entity constraints by metric
-        # total_return is fund-level only in your schema (fact_fund_return keyed by fund_key)
         if self.metric == Metric.total_return and self.entity != Entity.fund:
             raise ValueError("metric=total_return requires entity=fund")
 
-        # holdings metrics can be asked at fund/security/holding level,
-        # but scope controls how specific it is.
+        # 3) Ranking constraints
         if self.analysis_type == AnalysisType.rank and self.ranking is None:
             raise ValueError("ranking is required when analysis_type=rank")
         if self.analysis_type != AnalysisType.rank and self.ranking is not None:
             raise ValueError("ranking must be null unless analysis_type=rank")
 
-        # 3) Scope implies some identifier presence (minimal policy; can be extended later)
+        # 4) Scope implies some identifier presence (minimal policy; can be extended later)
         if self.scope == Scope.single:
             if self.entity == Entity.fund and not self.identifiers.fund_key:
-                # można później zamienić na policy + clarify w rules, ale schema może pilnować minimum
                 raise ValueError("scope=single, entity=fund requires identifiers.fund_key")
-            if self.entity == Entity.security and not (self.identifiers.security_key or self.identifiers.ticker or self.identifiers.cusip or self.identifiers.isin):
+            if self.entity == Entity.security and not (
+                self.identifiers.security_key
+                or self.identifiers.ticker
+                or self.identifiers.cusip
+                or self.identifiers.isin
+            ):
                 raise ValueError("scope=single, entity=security requires a security identifier (security_key/ticker/cusip/isin)")
 
         return self

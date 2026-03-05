@@ -79,18 +79,36 @@ TREND_KW = {
     "historical",
 }
 
+# Quarter / reporting period keywords
+
+LAST_QUARTER_KW = {
+    "last quarter",
+    "previous quarter",
+    "prior quarter",
+    "prev quarter",
+    "q-1",
+    "last q",
+}
+
+THIS_QUARTER_KW = {
+    "this quarter",
+    "current quarter",
+    "this q",
+}
+
+# Treat "most recent" semantics as "last completed quarter" in rules (for comparability)
 MOST_RECENT_KW = {
     "most recent",
     "latest",
     "current",
+    "recent",
+    "recently",
 }
 
-ALL_YEAR_KW = {
+YTD_KW = {
     "ytd",
     "year to date",
     "this year",
-    "all year",
-    "annual",
 }
 
 MARKET_VALUE_KW = {
@@ -103,6 +121,7 @@ WEIGHT_KW = {
     "weight",
     "weights",
     "weight %",
+    "weight percent",
 }
 
 SHARES_KW = {

@@ -11,6 +11,11 @@ from .time_window import build_time_filter
 
 logger = logging.getLogger(__name__)
 
+def _with_clause(ctes: list[str]) -> str:
+    ctes = [c.strip() for c in (ctes or []) if c and c.strip()]
+    if not ctes:
+        return ""
+    return "WITH\n" + ",\n".join(ctes) + "\n"
 
 def build_sql(intent: Intent) -> SQLPlan:
     """
@@ -88,23 +93,30 @@ def _rank_funds_by_holdings_metric(intent: Intent) -> SQLPlan:
 
     logger.debug("sql_builder.rank_holdings.metric_column=%s", metric_col)
 
+    fh = q_table("analytics", "fact_holding")
+    df = q_table("analytics", "dim_fund")
+
+    with_sql = _with_clause([
+        f"""
+        fh_src AS (
+          SELECT *
+          FROM {fh} fh
+        )
+        """,
+        time_filter.cte_sql,
+    ])
+
     sql = f"""
-    WITH
-    fh_src AS (
-      SELECT *
-      FROM {fh} fh
-    ),
-    {time_filter.cte_sql}
-    SELECT
+    {with_sql}SELECT
       fh.fund_key,
-      df.name AS fund_name,
+      df.fund_name AS fund_name,
       SUM(fh.{metric_col}) AS value
     FROM fh_src fh
     JOIN {df} df ON df.fund_key = fh.fund_key
     WHERE {time_filter.where_sql}
-    GROUP BY fh.fund_key, df.name
+    GROUP BY fh.fund_key, df.fund_name
     ORDER BY value DESC
-    LIMIT %(limit)s
+    LIMIT :limit
     """.strip()
 
     params: Dict[str, Any] = {"limit": top_n, **time_filter.params}
@@ -135,22 +147,26 @@ def _rank_funds_by_total_return(intent: Intent) -> SQLPlan:
 
     time_filter = build_time_filter(axis=intent.time_axis, window=intent.time_window, fact_alias="fr")
 
+    with_sql = _with_clause([
+        f"""
+        fr_src AS (
+          SELECT *
+          FROM {fr} fr
+        )
+        """,
+        time_filter.cte_sql,
+    ])
+
     sql = f"""
-    WITH
-    fr_src AS (
-      SELECT *
-      FROM {fr} fr
-    ),
-    {time_filter.cte_sql}
-    SELECT
+    {with_sql}SELECT
       fr.fund_key,
-      df.name AS fund_name,
+      df.fund_name AS fund_name,
       fr.total_return AS value
     FROM fr_src fr
     JOIN {df} df ON df.fund_key = fr.fund_key
     WHERE {time_filter.where_sql}
     ORDER BY value DESC
-    LIMIT %(limit)s
+    LIMIT :limit
     """.strip()
 
     params: Dict[str, Any] = {"limit": top_n, **time_filter.params}
@@ -160,3 +176,4 @@ def _rank_funds_by_total_return(intent: Intent) -> SQLPlan:
 
     validate_sql(sql, require_limit=True, allowed_schemas=("analytics",))
     return SQLPlan(sql=sql, params=params)
+
