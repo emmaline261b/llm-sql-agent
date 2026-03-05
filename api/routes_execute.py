@@ -6,7 +6,7 @@ from typing import Any
 from db.engine import engine
 from db.execution import execute_sql
 
-from intent_2.resolver import resolve
+from intent_clarifier.resolver import resolve
 from llm_sql.llm.models import ChatRequest
 from llm_sql.llm.planner import generate_plan
 
