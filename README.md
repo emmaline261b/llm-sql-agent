@@ -1,283 +1,350 @@
-#LLM SQL Agent (Local POC)
+LLM Agent Architecture
 
-Local proof-of-concept system:
+The system uses a multi-stage agent pipeline. Each stage has a clearly
+separated responsibility.
 
--   FastAPI API
--   PostgreSQL (Docker)
--   Real public data (SEC N-PORT)
--   Analytics layer (mini data warehouse)
--   Local LLM (Ollama)
--   /chat endpoint converting natural language → structured SQL plan
-    (JSON)
+This separation is critical because:
 
-The system runs fully locally.
+-   SQL generation must happen before data exists
+-   Answer explanations must happen after SQL execution
+-   Chart selection is a presentation concern, not a query concern
 
-------------------------------------------------------------------------
-
-1. Requirements
-
--   macOS (Apple Silicon tested)
--   Homebrew
--   Docker Desktop
--   Python 3.11
--   Ollama
+Therefore the agent operates in five sequential stages.
 
 ------------------------------------------------------------------------
 
-2. Python Environment
+Agent Execution Pipeline
 
-2.1 Create virtual environment
-
-    /opt/homebrew/opt/python@3.11/bin/python3.11 -m venv .venv
-    source .venv/bin/activate
-    python --version
-
-2.2 Install dependencies
-
-    pip install fastapi uvicorn sqlalchemy psycopg[binary] python-dotenv httpx jsonschema pydantic alembic
-
-------------------------------------------------------------------------
-
-3. PostgreSQL (Docker)
-
-3.1 docker-compose.yml
-
-    services:
-      db:
-        image: postgres:16
-        container_name: llm_sql_agent_db
-        environment:
-          POSTGRES_USER: app
-          POSTGRES_PASSWORD: app
-          POSTGRES_DB: app
-        ports:
-          - "5432:5432"
-        volumes:
-          - pgdata:/var/lib/postgresql/data
-
-    volumes:
-      pgdata:
-
-3.2 Start database
-
-    docker compose up -d
-    docker ps
+    User Question
+          │
+          ▼
+    1. Conversation / Clarification
+          │
+          ▼
+    2. SQL Planning (LLM)
+          │
+          ▼
+    3. SQL Execution (DB)
+          │
+          ▼
+    4. Presentation Planning (charts)
+          │
+          ▼
+    5. Result Explanation (LLM)
+          │
+          ▼
+    Response to user
 
 ------------------------------------------------------------------------
 
-4. Environment Variables
+1. Conversation / Clarification
 
-Create .env (do not commit):
+Purpose:
 
-    DATABASE_URL=postgresql+psycopg://app:app@localhost:5432/app
+Resolve ambiguity in the user question before SQL generation.
 
-------------------------------------------------------------------------
+Typical ambiguities:
 
-5. Project Structure
+-   time period
+-   aggregation level
+-   top N
+-   metric definitions
+-   filters
 
-    app.py
-    db/
-        engine.py
-        schema.py
-    etl/
-    llm/
-        client_ollama.py
-        models.py
-        planner.py
-        validation.py
-    semantic/
-        llm_output.schema.json
-        sql_planner.system.txt
-    sql/
-        analytics_build.sql
-    docker-compose.yml
+Example:
 
-------------------------------------------------------------------------
+User question:
 
-6. Load SEC N-PORT Data
+    Show fund exposure by asset category
 
-6.1 Create raw schema
+Possible interpretations:
 
-    CREATE SCHEMA raw_nport;
+-   latest report date
+-   last year
+-   last 4 quarters
+-   specific fund vs all funds
 
-6.2 Run ETL pipeline
-
-    python etl/load_nport_raw.py
-
-Verify:
-
-    SELECT table_name
-    FROM information_schema.tables
-    WHERE table_schema = 'raw_nport';
+The system may ask clarification questions.
 
 ------------------------------------------------------------------------
 
-7. Create Analytics Layer
+Implementation Options
 
-7.1 Initialize Alembic
+Two possible approaches exist.
 
-    alembic init alembic
+Option A (recommended): LLM Clarification Agent
 
-Edit alembic.ini:
+Use a lightweight LLM prompt to detect ambiguity and generate
+clarification questions.
 
-    sqlalchemy.url = postgresql+psycopg://app:app@localhost:5432/app
+Advantages:
 
-7.2 Create migration
+-   flexible
+-   handles natural language well
+-   easier to extend
 
-    alembic revision -m "create analytics schema"
-    alembic upgrade head
+Option B: Rule-based intent detection
 
-------------------------------------------------------------------------
+Detect patterns using predefined rules:
 
-8. Build Analytics Tables
+-   keywords for time
+-   keywords for aggregation
+-   keywords for metrics
 
-    python etl/build_analytics.py
+Advantages:
 
-------------------------------------------------------------------------
+-   deterministic
+-   faster
 
-9. Install and Configure Ollama
+Disadvantages:
 
-    ollama --version
-    ollama pull qwen2.5:7b-instruct
-    curl http://localhost:11434/api/tags
-
-------------------------------------------------------------------------
-
-10. Run FastAPI
-
-    uvicorn app:app --reload
-
-Open:
-
-http://127.0.0.1:8000/docs
+-   brittle
+-   limited coverage
 
 ------------------------------------------------------------------------
 
-11. Test Chat Endpoint
+Recommended Strategy
 
-    curl -X POST http://127.0.0.1:8000/chat   -H "Content-Type: application/json"   -d '{"question":"Show fund exposure by asset_category over time"}'
+Hybrid approach:
 
-------------------------------------------------------------------------
-------------------------------------------------------------------------
-------------------------------------------------------------------------
+    Rules first
+    LLM fallback
 
-#LLM SQL Agent — Run Instructions (Local)
-
-This document describes how to start the application locally step by
-step.
+1.  Try rule-based interpretation
+2.  If ambiguity detected → ask LLM for clarification
 
 ------------------------------------------------------------------------
 
-0. Go to project directory
+Clarification Prompt (LLM)
 
-    cd /Users/malgosialasota/PycharmProjects/llm-sql-agent
+Example system prompt:
 
-------------------------------------------------------------------------
+    You are an assistant helping clarify analytical questions.
 
-1. Activate Python environment
+    Your task is NOT to generate SQL.
 
-If .venv already exists:
+    Your task is to detect ambiguity in the user's question.
 
-    source .venv/bin/activate
-    python --version
+    If the question is ambiguous, ask a short clarification question.
 
-If starting from scratch:
+    If the question is sufficiently clear, respond with:
 
-    /opt/homebrew/opt/python@3.11/bin/python3.11 -m venv .venv
-    source .venv/bin/activate
-    pip install fastapi uvicorn sqlalchemy psycopg[binary] python-dotenv httpx jsonschema pydantic alembic
+    {
+      "status": "clear"
+    }
 
-------------------------------------------------------------------------
+    If clarification is required:
 
-2. Verify .env file
+    {
+      "status": "clarify",
+      "question": "..."
+    }
 
-Check that .env exists:
+Example output:
 
-    ls -la .env
-
-It must contain:
-
-    DATABASE_URL=postgresql+psycopg://app:app@localhost:5432/app
-
-------------------------------------------------------------------------
-
-3. Start PostgreSQL (Docker)
-
-    docker compose up -d
-    docker ps
-
-Optional DB connectivity check:
-
-    python -c "from dotenv import load_dotenv; import os; from sqlalchemy import create_engine, text; load_dotenv(); e=create_engine(os.environ['DATABASE_URL']); print(e.connect().execute(text('select 1')).scalar())"
+    {
+      "status": "clarify",
+      "question": "Do you want the exposure for the most recent reporting date or over a time period?"
+    }
 
 ------------------------------------------------------------------------
 
-4. Apply database migrations
+2. SQL Planning (LLM)
 
-    alembic upgrade head
+This stage converts the clarified intent into SQL.
 
-------------------------------------------------------------------------
+The LLM receives:
 
-5. (Optional) Run ETL and build analytics
+-   user question
+-   schema context
+-   SQL rules
+-   domain rules
 
-If raw data is not loaded:
+The output is a structured SQL plan.
 
-    python etl/load_nport_raw.py
+Important:
 
-If analytics tables need rebuilding:
+This stage must not produce explanations or summaries.
 
-    python etl/build_analytics.py
-
-------------------------------------------------------------------------
-
-6. Start Ollama (LLM)
-
-In a separate terminal:
-
-    ollama serve
-
-Verify:
-
-    curl -s http://localhost:11434/api/tags | head
-
-If model is missing:
-
-    ollama pull qwen2.5:7b-instruct
+Only query planning.
 
 ------------------------------------------------------------------------
 
-7. Start FastAPI
+SQL Planner Prompt
 
-In another terminal (with active .venv):
+System prompt example:
 
-    uvicorn app:app --reload
+    You are a SQL planner for Postgres.
+
+    Your task is to generate a SQL query that answers the user's question.
+
+    Rules:
+
+    - Only SELECT or WITH queries are allowed.
+    - Only tables from schema analytics.* may be used.
+    - Use explicit joins.
+    - Use CTEs instead of window functions.
+    - Always include LIMIT <= 500 unless results are guaranteed small.
+
+    Return ONLY JSON:
+
+    {
+      "sql": "...",
+      "params": {},
+      "result_shape": "...",
+      "assumptions": []
+    }
+
+The SQL is then validated before execution.
 
 ------------------------------------------------------------------------
 
-8. Test the application
+3. SQL Execution
 
-Swagger UI:
+The generated SQL is executed against PostgreSQL.
 
-http://127.0.0.1:8000/docs
+Execution safeguards:
 
-Health check:
+-   statement timeout
+-   SQL validation
+-   SELECT-only enforcement
+-   schema restrictions
 
-    curl http://127.0.0.1:8000/health
+Output format:
 
-Database check:
-
-    curl http://127.0.0.1:8000/db-check
-
-LLM planner test:
-
-    curl -X POST http://127.0.0.1:8000/chat   -H "Content-Type: application/json"   -d '{"question":"Pokaż ekspozycję funduszy po asset_category w czasie"}'
+    {
+      "columns": [...],
+      "row_count": N,
+      "rows": [...]
+    }
 
 ------------------------------------------------------------------------
 
-Minimal startup sequence (when everything is prepared)
+4. Presentation Planning (Chart Selection)
 
-1.  source .venv/bin/activate
-2.  docker compose up -d
-3.  ollama serve
-4.  uvicorn app:app –reload
-5.  Open /docs and test /chat
+Chart type is not determined by the user query.
+
+Instead a default chart is selected based on result structure.
+
+Example mapping:
+
+  Result Shape   Chart
+  -------------- ------------
+  timeseries     line chart
+  ranking        bar chart
+  table          table
+  distribution   histogram
+
+Example logic:
+
+    if result_shape == "timeseries":
+        chart = line
+    elif result_shape == "ranking":
+        chart = bar
+    else:
+        chart = table
+
+Users may change charts in the frontend.
+
+------------------------------------------------------------------------
+
+5. Result Explanation (LLM)
+
+This stage generates:
+
+-   answer summary
+-   suggested follow-up questions
+
+Unlike SQL planning, this step has access to the data.
+
+Inputs:
+
+-   user question
+-   SQL query
+-   result metadata
+-   sample rows
+
+------------------------------------------------------------------------
+
+Explanation Prompt
+
+Example system prompt:
+
+    You are a financial data analyst.
+
+    You are given:
+
+    - a user question
+    - a SQL query
+    - the resulting data
+
+    Write a short answer summarizing the result.
+
+    Guidelines:
+
+    - Use plain language
+    - Do not invent information not present in the data
+    - Mention key trends or largest values
+
+Example output:
+
+    {
+      "answer_brief": "...",
+      "followups": [
+        "...",
+        "..."
+      ]
+    }
+
+------------------------------------------------------------------------
+
+Final Response Format
+
+The API response combines all stages.
+
+Example:
+
+    {
+      "plan": {
+        "sql": "...",
+        "params": {},
+        "assumptions": []
+      },
+      "data": {
+        "columns": [...],
+        "rows": [...]
+      },
+      "chart": {
+        "type": "line",
+        "x": "...",
+        "y": "...",
+        "series": "..."
+      },
+      "answer_brief": "...",
+      "followups": [...]
+    }
+
+------------------------------------------------------------------------
+
+Why This Architecture
+
+This design avoids several common LLM errors:
+
+  Problem                            Solution
+  ---------------------------------- --------------------------------------------
+  LLM invents explanations           explanations generated after SQL execution
+  LLM guesses chart types            chart chosen deterministically
+  LLM generates invalid SQL          SQL validation layer
+  LLM mixes planning and narration   responsibilities separated
+
+------------------------------------------------------------------------
+
+Future Improvements
+
+Planned enhancements:
+
+-   query caching
+-   vector retrieval for schema context
+-   query memory
+-   user preference learning
+-   interactive BI-style filtering

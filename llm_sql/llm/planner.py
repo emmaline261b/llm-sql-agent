@@ -1,11 +1,13 @@
 from pathlib import Path
+from typing import Optional, Dict, Any
 
 from db.schema import get_analytics_schema_text
-from llm.client_ollama import call_ollama_json
-from llm.validation import validate_plan
-from llm.guard import basic_sql_guard
+from llm_sql.llm.client_ollama import call_ollama_json
+from llm_sql.llm.guard import basic_sql_guard
+from llm_sql.llm.validation import validate_plan
 
 SYSTEM_PROMPT = Path("semantic/sql_planner.system.txt").read_text(encoding="utf-8")
+
 
 def apply_defaults(plan: dict) -> dict:
     plan = dict(plan or {})
@@ -29,10 +31,22 @@ def apply_defaults(plan: dict) -> dict:
 
     return plan
 
-def generate_plan(question: str, model: str = "qwen2.5:7b-instruct") -> dict:
+
+def generate_plan(
+    question: str,
+    model: str = "qwen2.5:7b-instruct",
+    *,
+    intent: Optional[Dict[str, Any]] = None,
+) -> dict:
     schema_text = get_analytics_schema_text()
 
-    user_prompt = f"""User question: {question}
+    intent_block = ""
+    if intent is not None:
+        # Keep it plain JSON to reduce ambiguity.
+        import json
+        intent_block = "\nStructured intent (authoritative; prefer this over guessing):\n" + json.dumps(intent, indent=2)
+
+    user_prompt = f"""User question: {question}{intent_block}
 
 Database schema (only analytics.* allowed):
 {schema_text}
